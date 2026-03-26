@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexGen IoT | Enterprise Security</title>
+    <!-- Dependencies -->
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        /* Modern Enterprise Dashboard Styling */
+        :root {
+            --bg-base: #030712;
+            --bg-surface: rgba(17, 24, 39, 0.65);
+            --border-glow: rgba(56, 189, 248, 0.15);
+            --accent-primary: #38bdf8; /* Light Blue */
+            --accent-secondary: #818cf8; /* Indigo */
+            --accent-danger: #f43f5e; /* Rose / Red */
+            --accent-success: #10b981; /* Emerald */
+            --text-high: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-base);
+            color: var(--text-high);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+        }
+
+        /* Ambient Background Effects */
+        .ambient-light-1 { position: absolute; top: -20%; left: -10%; width: 60vw; height: 60vw; background: radial-gradient(circle, rgba(56,189,248,0.15) 0%, rgba(3,7,18,0) 70%); z-index: -1; pointer-events: none; }
+        .ambient-light-2 { position: absolute; bottom: -20%; right: -10%; width: 60vw; height: 60vw; background: radial-gradient(circle, rgba(129,140,248,0.1) 0%, rgba(3,7,18,0) 70%); z-index: -1; pointer-events: none; }
+
+        /* Fullscreen Overlay System */
+        .overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(3, 7, 18, 0.85);
+            backdrop-filter: blur(12px);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+        .overlay-content {
+            text-align: center;
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid var(--border-glow);
+            padding: 4rem;
+            border-radius: 30px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            transform: translateY(20px);
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .overlay.active .overlay-content { transform: translateY(0); }
+        .overlay-icon { width: 80px; height: 80px; color: var(--accent-danger); margin-bottom: 2rem; animation: pulse-icon 2s infinite; }
+        @keyframes pulse-icon { 0% { transform: scale(1); opacity: 0.8; } 50% { transform: scale(1.1); opacity: 1; filter: drop-shadow(0 0 15px rgba(244,63,94,0.6)); } 100% { transform: scale(1); opacity: 0.8; } }
+        .overlay h2 { font-size: 2.5rem; letter-spacing: -1px; margin-bottom: 1rem; }
+        .overlay p { color: var(--text-muted); font-size: 1.1rem; }
+        .spinner { margin: 2rem auto 0; width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--accent-primary); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Sidebar Navigation */
+        .sidebar {
+            width: 280px;
+            background: rgba(15, 23, 42, 0.5);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid var(--border-glow);
+            display: flex;
+            flex-direction: column;
+            padding: 2rem;
+            z-index: 10;
+        }
+        
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 3rem;
+        }
+        .logo-icon { color: var(--accent-primary); width: 32px; height: 32px; }
+        .logo-text { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.5px; background: linear-gradient(135deg, #fff, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
+        .nav-items { flex-grow: 1; display: flex; flex-direction: column; gap: 8px; }
+        .nav-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-muted);
+            padding: 14px 20px;
+            border-radius: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-family: inherit;
+            font-size: 1.05rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        .nav-btn:hover { background: rgba(255,255,255,0.03); color: var(--text-high); }
+        .nav-btn.active {
+            background: linear-gradient(to right, rgba(56,189,248,0.1), transparent);
+            border-left: 3px solid var(--accent-primary);
+            color: var(--text-high);
+        }
+
+        .export-btn {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            color: var(--accent-success);
+            padding: 14px 20px;
+            border-radius: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-family: inherit;
+            font-weight: 700;
+            transition: all 0.3s;
+            margin-top: auto;
+        }
+        .export-btn:hover { background: rgba(16, 185, 129, 0.2); transform: translateY(-2px); }
+
+        /* Main Workspace */
+        .workspace {
+            flex: 1;
+            padding: 2.5rem 3.5rem;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        /* Header Area */
+        header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 2.5rem; }
+        .header-left h1 { font-size: 2.2rem; font-weight: 700; letter-spacing: -1px; margin-bottom: 0.2rem; }
+        .header-left p { color: var(--text-muted); font-size: 1rem; }
+        
+        .status-capsules { display: flex; gap: 15px; }
+        .capsule {
+            display: flex; align-items: center; gap: 10px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-glow);
+            padding: 10px 18px;
+            border-radius: 50px;
+            font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+            backdrop-filter: blur(10px);
+        }
+        .dot { width: 8px; height: 8px; border-radius: 50%; }
+        .dot-green { background: var(--accent-success); box-shadow: 0 0 10px var(--accent-success); }
+        .dot-red { background: var(--accent-danger); box-shadow: 0 0 10px var(--accent-danger); }
+        .dot-yellow { background: #fbbf24; box-shadow: 0 0 10px #fbbf24; }
+
+        /* Alert Banner */
+        .alert-bar {
+            background: linear-gradient(90deg, rgba(244,63,94,0.1), rgba(244,63,94,0.02));
+            border-left: 4px solid var(--accent-danger);
+            border-radius: 12px;
+            padding: 18px 25px;
+            margin-bottom: 2.5rem;
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            animation: slideDown 0.4s ease;
+        }
+        .alert-bar.visible { display: flex; }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Visual Grids */
+        .view-section { display: none; animation: fadeIn 0.4s ease; }
+        .view-section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .metric-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-glow);
+            border-radius: 24px;
+            padding: 2rem;
+            backdrop-filter: blur(10px);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s;
+        }
+        .metric-card:hover { transform: translateY(-4px); border-color: rgba(56, 189, 248, 0.4); box-shadow: 0 20px 40px -15px rgba(0,0,0,0.5); }
+        
+        .card-header { display: flex; align-items: center; gap: 12px; color: var(--text-muted); font-size: 0.9rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 1.5rem; }
+        .icon-box { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+        .temp-icon { background: rgba(244, 63, 94, 0.15); color: var(--accent-danger); }
+        .hum-icon { background: rgba(56, 189, 248, 0.15); color: var(--accent-primary); }
+        .up-icon { background: rgba(16, 185, 129, 0.15); color: var(--accent-success); }
+        
+        .card-body { position: relative; z-index: 2; }
+        .metric-value { font-size: 3.5rem; font-weight: 800; font-family: 'Outfit', sans-serif; letter-spacing: -2px; }
+        .metric-unit { font-size: 1.2rem; color: var(--text-muted); font-weight: 600; margin-left: 5px; }
+        .metric-sub { font-size: 0.85rem; color: var(--text-muted); margin-top: 5px; }
+
+        /* Chart Canvas */
+        .chart-wrapper {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-glow);
+            border-radius: 24px;
+            padding: 2rem;
+            height: 480px;
+            backdrop-filter: blur(10px);
+        }
+
+        /* Tables & Lists */
+        .table-panel {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-glow);
+            border-radius: 24px;
+            overflow: hidden;
+        }
+        .table-scroll { max-height: 600px; overflow-y: auto; }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { background: rgba(0,0,0,0.4); padding: 20px 25px; color: var(--text-muted); font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; position: sticky; top: 0; backdrop-filter: blur(10px); }
+        td { padding: 18px 25px; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 0.95rem; }
+        
+        .mono-text { font-family: 'JetBrains Mono', monospace; color: var(--accent-primary); font-size: 0.85rem; background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 6px; }
+        .mono-warn { color: var(--accent-danger); }
+
+        .tag { font-size: 0.75rem; font-weight: 700; padding: 6px 12px; border-radius: 20px; text-transform: uppercase; }
+        .tag-ok { background: rgba(16,185,129,0.15); color: var(--accent-success); }
+        .tag-bad { background: rgba(244,63,94,0.15); color: var(--accent-danger); }
+        .tr-bad { background: rgba(244,63,94,0.03); }
+
+        /* Scrollbars */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+    </style>
+</head>
+<body>
+
+    <div class="ambient-light-1"></div>
+    <div class="ambient-light-2"></div>
+
+    <!-- OFFLINE OVERLAY -->
+    <div id="offline-overlay" class="overlay active">
+        <div class="overlay-content">
+            <i data-lucide="cpu" class="overlay-icon"></i>
+            <h2 id="overlay-title">Hardware Disconnected</h2>
+            <p id="overlay-text">The Arduino sensor at COM10 is physically disconnected or offline.<br>Awaiting device reconnection...</p>
+            <div class="spinner"></div>
+        </div>
+    </div>
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+        <div class="logo-container">
+            <i data-lucide="target" class="logo-icon"></i>
+            <span class="logo-text">NexGen IoT</span>
+        </div>
+
+        <nav class="nav-items">
+            <button class="nav-btn active" onclick="switchTab('dashboard', this)">
+                <i data-lucide="layout-grid"></i> Real-time Telemetry
+            </button>
+            <button class="nav-btn" onclick="switchTab('raw', this)">
+                <i data-lucide="file-json-2"></i> Packet Inspector
+            </button>
+            <button class="nav-btn" onclick="switchTab('quarantine', this)">
+                <i data-lucide="shield-alert"></i> Quarantine Logs
+            </button>
+        </nav>
+
+        <button class="export-btn" onclick="exportDataToCSV()">
+            <i data-lucide="download"></i> Export Data CSV
+        </button>
+    </aside>
+
+    <!-- MAIN DASHBOARD -->
+    <main class="workspace">
+        <header>
+            <div class="header-left">
+                <h1>Security Dashboard</h1>
+                <p>Live endpoint monitoring & data verification</p>
+            </div>
+            <div class="status-capsules">
+                <div class="capsule">
+                    <div id="server-dot" class="dot dot-red"></div>
+                    <span id="server-txt">Server Offline</span>
+                </div>
+                <div class="capsule">
+                    <div id="device-dot" class="dot dot-red"></div>
+                    <span id="device-txt">Sensor Offline</span>
+                </div>
+            </div>
+        </header>
+
+        <div id="tamper-alert" class="alert-bar">
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <div style="background: rgba(244,63,94,0.2); padding: 12px; border-radius: 14px;">
+                    <i data-lucide="siren" style="color: var(--accent-danger); width: 28px; height: 28px;"></i>
+                </div>
+                <div>
+                    <div style="color: var(--accent-danger); font-weight: 800; font-size: 1.1rem; letter-spacing: 1px; text-transform: uppercase;">Intrusion Detected</div>
+                    <div id="tamper-desc" style="color: #fda4af; font-size: 0.9rem; margin-top: 2px;">Abnormal sensor spike identified and blocked. SMS Dispatched.</div>
+                </div>
+            </div>
+            <button style="background: var(--accent-danger); color: white; border: none; padding: 10px 20px; border-radius: 10px; font-weight: 700; cursor: pointer;" onclick="document.getElementById('tamper-alert').classList.remove('visible')">DISMISS</button>
+        </div>
+
+        <!-- TAB: DASHBOARD -->
+        <div id="view-dashboard" class="view-section active">
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="card-header">
+                        <div class="icon-box temp-icon"><i data-lucide="thermometer"></i></div>
+                        Core Temperature
+                    </div>
+                    <div class="card-body">
+                        <span id="val-temp" class="metric-value">--.-</span><span class="metric-unit">°C</span>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="card-header">
+                        <div class="icon-box hum-icon"><i data-lucide="droplets"></i></div>
+                        Relative Humidity
+                    </div>
+                    <div class="card-body">
+                        <span id="val-hum" class="metric-value">--.-</span><span class="metric-unit">%</span>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="card-header">
+                        <div class="icon-box up-icon"><i data-lucide="radio"></i></div>
+                        Packets Processed
+                    </div>
+                    <div class="card-body">
+                        <span id="val-packets" class="metric-value">0</span><span class="metric-unit">pkts</span>
+                        <div class="metric-sub">Session runtime: <span id="val-uptime">0s</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-wrapper">
+                <canvas id="liveChart"></canvas>
+            </div>
+        </div>
+
+        <!-- TAB: PACKET INSPECTOR -->
+        <div id="view-raw" class="view-section">
+            <div class="table-panel">
+                <div class="table-scroll">
+                    <table id="table-raw">
+                        <thead>
+                            <tr>
+                                <th>Local Time</th>
+                                <th>Raw JSON Payload</th>
+                                <th>Integrity</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: QUARANTINE -->
+        <div id="view-quarantine" class="view-section">
+            <div class="table-panel" style="border-color: rgba(244,63,94,0.3);">
+                <div class="table-scroll">
+                    <table id="table-quar">
+                        <thead>
+                            <tr>
+                                <th>Detection Time</th>
+                                <th>Blocked Value Signature</th>
+                                <th>Automated Action</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Synthetic Audio Context for Alerts (No external sound files needed) -->
+    <script>
+        function playAlertSound() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Play two rapid high-pitched beeps
+                for(let i=0; i<2; i++) {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(800 + (i*200), ctx.currentTime + (i*0.2));
+                    
+                    gain.gain.setValueAtTime(0, ctx.currentTime + (i*0.2));
+                    gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + (i*0.2) + 0.05);
+                    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + (i*0.2) + 0.15);
+                    
+                    osc.start(ctx.currentTime + (i*0.2));
+                    osc.stop(ctx.currentTime + (i*0.2) + 0.2);
+                }
+            } catch(e) { console.log('Audio disabled by browser policy'); }
+        }
+    </script>
+
+    <script>
+        lucide.createIcons();
+
+        // UI State
+        let packetsReceived = 0;
+        let sessionStartTime = Math.floor(Date.now() / 1000);
+        let rawDataLog = []; // Used for CSV export
+        
+        setInterval(() => {
+            const up = Math.floor(Date.now()/1000) - sessionStartTime;
+            let timeStr = `${up}s`;
+            if (up > 60) timeStr = `${Math.floor(up/60)}m ${up%60}s`;
+            document.getElementById('val-uptime').innerText = timeStr;
+        }, 1000);
+
+        function switchTab(view, btn) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById('view-' + view).classList.add('active');
+            btn.classList.add('active');
+        }
+
+        function exportDataToCSV() {
+            if (rawDataLog.length === 0) return alert("No data available to export yet!");
+            
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "Timestamp,Temperature(C),Humidity(%),TamperedStatus\n";
+            
+            rawDataLog.forEach(row => {
+                csvContent += `${row.time},${row.temp},${row.hum},${row.tampered}\n`;
+            });
+            
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `IoT_Telemetry_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Chart Setup
+        const ctxChart = document.getElementById('liveChart').getContext('2d');
+        const gradTemp = ctxChart.createLinearGradient(0,0,0,400);
+        gradTemp.addColorStop(0, 'rgba(244, 63, 94, 0.4)');
+        gradTemp.addColorStop(1, 'rgba(244, 63, 94, 0)');
+        
+        const gradHum = ctxChart.createLinearGradient(0,0,0,400);
+        gradHum.addColorStop(0, 'rgba(56, 189, 248, 0.4)');
+        gradHum.addColorStop(1, 'rgba(56, 189, 248, 0)');
+
+        const liveChart = new Chart(ctxChart, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    { label: 'Temp °C', borderColor: '#f43f5e', backgroundColor: gradTemp, borderWidth: 3, fill: true, tension: 0.4, data: [] },
+                    { label: 'Hum %', borderColor: '#38bdf8', backgroundColor: gradHum, borderWidth: 3, fill: true, borderDash: [5,5], tension: 0.4, data: [] }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: '#f8fafc', font: {family: 'Outfit', size: 14, weight: 600} } } },
+                scales: {
+                    x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
+                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+                }
+            }
+        });
+
+        const MAX_POINTS = 30;
+
+        // Socket IO Engine
+        const socket = io('http://localhost:5001', { reconnectionDelay: 1000 });
+        
+        const serverDot = document.getElementById('server-dot');
+        const serverTxt = document.getElementById('server-txt');
+        const deviceDot = document.getElementById('device-dot');
+        const deviceTxt = document.getElementById('device-txt');
+        const overlay = document.getElementById('offline-overlay');
+
+        function setOverlay(active, reason) {
+            if (active) {
+                overlay.classList.add('active');
+                if (reason === 'server') {
+                    document.getElementById('overlay-title').innerText = "Bridge Server Offline";
+                    document.getElementById('overlay-text').innerText = "The Python backend at localhost:5001 is not running.\nPlease start a.py to bridge telemetry.";
+                } else if (reason === 'device') {
+                    document.getElementById('overlay-title').innerText = "Hardware Disconnected";
+                    document.getElementById('overlay-text').innerText = "The Arduino sensor at COM10 is physically disconnected or offline.\nAwaiting device reconnection...";
+                }
+            } else {
+                overlay.classList.remove('active');
+            }
+        }
+
+        socket.on('connect', () => {
+            serverDot.className = 'dot dot-green';
+            serverTxt.innerText = 'Server Connected';
+            // By default wait for first data packet to clear device overlay
+        });
+
+        socket.on('disconnect', () => {
+            serverDot.className = 'dot dot-red';
+            serverTxt.innerText = 'Server Offline';
+            deviceDot.className = 'dot dot-red';
+            deviceTxt.innerText = 'Sensor Offline';
+            setOverlay(true, 'server');
+        });
+
+        socket.on('telemetry_update', (data) => {
+            // Check Hardware Connection State
+            if (data.device_connected === false) {
+                deviceDot.className = 'dot dot-red';
+                deviceTxt.innerText = 'Sensor Offline';
+                setOverlay(true, 'device');
+                return; // Stop processing further UI updates
+            } else {
+                deviceDot.className = 'dot dot-green';
+                deviceTxt.innerText = 'Sensor Active';
+                setOverlay(false);
+            }
+
+            packetsReceived++;
+            document.getElementById('val-packets').innerText = packetsReceived;
+            
+            const ts = new Date().toLocaleTimeString();
+            
+            // Log for CSV
+            rawDataLog.push({ time: ts, temp: data.temperature, hum: data.humidity, tampered: data.tampered });
+
+            // UI Alert
+            const alertBar = document.getElementById('tamper-alert');
+            if (data.tampered) {
+                alertBar.classList.add('visible');
+                document.getElementById('tamper-desc').innerText = `Abnormal jump detected: ${data.temperature.toFixed(1)}°C | ${data.humidity.toFixed(1)}%. Firewall blocked payload. Sent Email + Mobile Alert!`;
+                playAlertSound();
+                
+                const now = Date.now();
+                if (now - (window.lastAlertTime || 0) > 60000) {
+                    window.lastAlertTime = now;
+                    fetch('http://localhost:5001/send-alert', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            phoneNumber: '9487432081',
+                            email: 'allenchandev25@gmail.com',
+                            message: `ALERT: Tampered data detected exactly at ${ts}. T:${data.temperature.toFixed(1)}C H:${data.humidity.toFixed(1)}%`
+                        })
+                    }).catch(console.error);
+                }
+            }
+
+            // Gauges
+            document.getElementById('val-temp').innerText = parseFloat(data.temperature).toFixed(1);
+            document.getElementById('val-hum').innerText = parseFloat(data.humidity).toFixed(1);
+
+            // Chart
+            if(liveChart.data.labels.length >= MAX_POINTS) {
+                liveChart.data.labels.shift();
+                liveChart.data.datasets[0].data.shift();
+                liveChart.data.datasets[1].data.shift();
+            }
+            liveChart.data.labels.push(ts);
+            liveChart.data.datasets[0].data.push(data.temperature);
+            liveChart.data.datasets[1].data.push(data.humidity);
+            liveChart.update('none');
+
+            // Tables
+            const tBodyRaw = document.querySelector('#table-raw tbody');
+            const rowStr = `
+                <tr class="${data.tampered ? 'tr-bad' : ''}">
+                    <td>${ts}</td>
+                    <td><span class="mono-text ${data.tampered ? 'mono-warn' : ''}">${JSON.stringify(data)}</span></td>
+                    <td><span class="tag ${data.tampered ? 'tag-bad' : 'tag-ok'}">${data.tampered ? 'SPOOFED' : 'VALID'}</span></td>
+                </tr>`;
+            tBodyRaw.insertAdjacentHTML('afterbegin', rowStr);
+            if (tBodyRaw.children.length > 50) tBodyRaw.lastElementChild.remove();
+
+            if (data.tampered) {
+                const tBodyQuar = document.querySelector('#table-quar tbody');
+                tBodyQuar.insertAdjacentHTML('afterbegin', `
+                    <tr>
+                        <td style="font-weight:600;">${ts}</td>
+                        <td><span class="mono-text mono-warn">${JSON.stringify(data)}</span></td>
+                        <td><span class="tag tag-bad">QUARANTINED</span></td>
+                    </tr>
+                `);
+            }
+        });
+    </script>
+</body>
+</html>
