@@ -117,7 +117,7 @@ def test_anomaly():
             tampered = False
             if abs(t - current_data["temperature"]) > 5.0 or abs(h - current_data["humidity"]) > 10.0:
                 tampered = True
-                print("🚨 NETWORK TAMPER DETECTED! External payload flagged.", flush=True)
+                print("🚨 NETWORK TAMPER DETECTED!!! External payload flagged.", flush=True)
                 
             current_data["temperature"] = t
             current_data["humidity"] = h
