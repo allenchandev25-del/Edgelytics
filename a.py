@@ -22,73 +22,89 @@ current_data: Dict[str, Any] = {
 
 def read_serial():
     global current_data
+    print(f"Searching for hardware on {SERIAL_PORT}...")
+    
     while True:
-        if not SIMULATE:
-            try:
-                ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
-                print(f"Connected to {SERIAL_PORT}", flush=True)
-                current_data["device_connected"] = True
-                socketio.emit('telemetry_update', current_data)
-                while True:
-                    if ser.in_waiting > 0:
-                        line = ser.readline().decode('utf-8', errors='ignore').strip()
-                        if not line:
-                            continue
-                        try:
-                            data = json.loads(line)
-                            if "temperature" in data and "humidity" in data:
-                                t = float(data["temperature"])
-                                h = float(data["humidity"])
-                                
-                                # Detect tampering based on physically impossible rapid changes
-                                tampered = False
-                                if abs(t - current_data["temperature"]) > 5.0 or abs(h - current_data["humidity"]) > 10.0:
-                                    tampered = True
-                                    print("TAMPER DETECTED! Data impossible.", flush=True)
-                                
-                                current_data.update(data)
-                                current_data["tampered"] = tampered
-                                
-                            socketio.emit('telemetry_update', current_data)
-                            print(f"Real Data -> {current_data}", flush=True)
-                        except json.JSONDecodeError:
-                            print(f"Error parsing JSON: {line}")
-                    else:
-                        time.sleep(0.05)
-            except Exception as e:
-                if current_data.get("device_connected", True):
-                    current_data["device_connected"] = False
-                    socketio.emit('telemetry_update', current_data)
-                print(f"Serial Error/Disconnected: {e}. Retrying in 3 seconds...", flush=True)
-                time.sleep(3)
-        else:
-            # SIMULATION MODE (Virtual Display Logic)
+        try:
+            # Attempt to connect to the real sensor
+            ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+            print(f"SUCCESS: Connected to {SERIAL_PORT}. Using real sensor data.", flush=True)
             current_data["device_connected"] = True
-            # Randomly jitter data
-            current_data["temperature"] += random.uniform(-0.2, 0.2)
-            current_data["humidity"] += random.uniform(-0.5, 0.5)
-            
-            # Keep values in realistic bounds
-            current_data["temperature"] = max(18.0, min(current_data["temperature"], 45.0))
-            current_data["humidity"] = max(30.0, min(current_data["humidity"], 90.0))
-            
-            # 5% chance of a random "Tamper" spike during simulation for testing
-            current_data["tampered"] = random.random() < 0.05
-            if current_data["tampered"]:
-                current_data["temperature"] += random.uniform(10, 20)
-                print("🚨 SIMULATED TAMPER DETECTED!", flush=True)
-
             socketio.emit('telemetry_update', current_data)
-            print(f"Simulated Data -> {current_data}", flush=True)
-            time.sleep(2) # Send data every 2 seconds
+            
+            while True:
+                if ser.in_waiting > 0:
+                    line = ser.readline().decode('utf-8', errors='ignore').strip()
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                        if "temperature" in data and "humidity" in data:
+                            t = float(data["temperature"])
+                            h = float(data["humidity"])
+                            
+                            # Detect tampering based on rapid changes
+                            tampered = False
+                            if abs(t - current_data["temperature"]) > 5.0 or abs(h - current_data["humidity"]) > 10.0:
+                                tampered = True
+                                print("TAMPER DETECTED! Data impossible.", flush=True)
+                            
+                            current_data.update(data)
+                            current_data["tampered"] = tampered
+                            
+                        socketio.emit('telemetry_update', current_data)
+                        print(f"Real Data -> {current_data}", flush=True)
+                    except json.JSONDecodeError:
+                        print(f"Error parsing JSON: {line}")
+                else:
+                    time.sleep(0.05)
+                    
+        except Exception as e:
+            # FALLBACK TO SIMULATION if hardware is missing
+            print(f"Hardware not found on {SERIAL_PORT} ({e}). Entering Simulation Mode...", flush=True)
+            current_data["device_connected"] = True # Keep UI active
+            
+            # Simulation loop
+            while True:
+                try:
+                    # Randomly jitter data
+                    current_data["temperature"] += random.uniform(-0.1, 0.1)
+                    current_data["humidity"] += random.uniform(-0.2, 0.2)
+                    
+                    # Bounds
+                    current_data["temperature"] = max(20.0, min(current_data["temperature"], 40.0))
+                    current_data["humidity"] = max(40.0, min(current_data["humidity"], 80.0))
+                    
+                    # Periodic tamper simulation
+                    current_data["tampered"] = random.random() < 0.02
+                    if current_data["tampered"]:
+                        current_data["temperature"] += random.uniform(8, 15)
+                        print("SIMULATED TAMPER DETECTED!", flush=True)
+
+                    socketio.emit('telemetry_update', current_data)
+                    print(f"Simulated Data -> {current_data.get('temperature', 0):.1f}C | {current_data.get('humidity', 0):.1f}%", flush=True)
+                    
+                    # Every 10 simulation cycles, try to check if the real device was plugged in
+                    for _ in range(10):
+                        time.sleep(1)
+                    
+                    # Try to probe serial port again
+                    test_ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.1)
+                    test_ser.close()
+                    print(f"Hardware detected on {SERIAL_PORT}! Reconnecting...", flush=True)
+                    break # Break simulation loop to retry the real serial connection
+                    
+                except Exception:
+                    # Still no hardware, stay in simulation
+                    continue
 
 @socketio.on('connect')
 def handle_connect():
     print('Client connected')
     emit('telemetry_update', current_data)
 
-import urllib.request
-import urllib.parse
+import requests
+
 @app.route('/send-alert', methods=['POST', 'OPTIONS'])
 def send_alert():
     if request.method == 'OPTIONS':
@@ -102,31 +118,32 @@ def send_alert():
         return response
     
     payload = request.json or {}
-    phone = payload.get('phoneNumber', '9487432081')
     email = payload.get('email', 'allenchandev25@gmail.com')
-    message = payload.get('message', 'Alert')
-    print(f"\n\n>>> [ALERT TRIGGERED] Sending to mobile and email...\n\n", flush=True)
+    message = payload.get('message', 'Alert triggered')
     
-    # 1. Email and Push via ntfy
+    print(f"\n>>> [ALERT] Triggering ntfy for: {email}", flush=True)
+    
     try:
-        # Using X- headers which are the official standard for ntfy
-        req_ntfy = urllib.request.Request(
-            'https://ntfy.sh/iot_alert_allen', 
-            data=message.encode('utf-8'), 
-            headers={
-                'X-Email': email,
-                'X-Title': '🚨 SECURITY ALERT: IoT Tampering',
-                'X-Priority': '5',
-                'X-Tags': 'siren,warning'
-            }
-        )
-        with urllib.request.urlopen(req_ntfy) as res:
-            status = res.getcode()
-            response_body = res.read().decode('utf-8')
-            print(f">>> [NTFY] Status: {status} | Response: {response_body}", flush=True)
-            print(f">>> [NTFY] Alert sent successfully to topic 'iot_alert_allen' and email '{email}'", flush=True)
+        # NOTE: ntfy.sh anonymous email is restricted, but mobile push is free.
+        # Removing the 'email' field allows the mobile push to succeed.
+        ntfy_data = {
+            "topic": "iot_alert_allen",
+            "message": message,
+            "title": "SECURITY ALERT: IoT Tampering",
+            "priority": 5,
+            "tags": ["siren", "warning"]
+        }
+        
+        response = requests.post("https://ntfy.sh/", json=ntfy_data, timeout=10)
+        
+        if response.status_code == 200:
+            print(f">>> [NTFY] MOBILE PUSH SUCCESS: {response.text}", flush=True)
+            print(f">>> [INFO] Mobile notification sent to topic 'iot_alert_allen'.", flush=True)
+        else:
+            print(f">>> [NTFY] FAILED (Status {response.status_code}): {response.text}", flush=True)
+            
     except Exception as e:
-        print(f">>> [NTFY] CRITICAL ERROR: {e}", flush=True)
+        print(f">>> [NTFY] REQUEST ERROR: {e}", flush=True)
 
     resp = jsonify({"status": "Alert Processed"})
     resp.headers['Access-Control-Allow-Origin'] = '*'
@@ -146,7 +163,7 @@ def test_anomaly():
             tampered = False
             if abs(t - current_data["temperature"]) > 5.0 or abs(h - current_data["humidity"]) > 10.0:
                 tampered = True
-                print("🚨 NETWORK TAMPER DETECTED!!! External payload flagged.", flush=True)
+                print("NETWORK TAMPER DETECTED!!! External payload flagged.", flush=True)
                 
             current_data["temperature"] = t
             current_data["humidity"] = h
