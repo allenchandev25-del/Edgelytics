@@ -3,12 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NexGen IoT | Enterprise Security</title>
-    <!-- Dependencies -->
+    <title>Edgelytics IoT | Enterprise Security</title>
+
     <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
     
     <style>
         /* Modern Enterprise Dashboard Styling */
@@ -16,10 +18,10 @@
             --bg-base: #030712;
             --bg-surface: rgba(17, 24, 39, 0.65);
             --border-glow: rgba(56, 189, 248, 0.15);
-            --accent-primary: #38bdf8; /* Light Blue */
-            --accent-secondary: #818cf8; /* Indigo */
-            --accent-danger: #f43f5e; /* Rose / Red */
-            --accent-success: #10b981; /* Emerald */
+            --accent-primary: #38bdf8; 
+            --accent-secondary: #818cf8;
+            --accent-danger: #f43f5e;
+            --accent-success: #10b981;
             --text-high: #f8fafc;
             --text-muted: #94a3b8;
         }
@@ -133,8 +135,14 @@
             font-family: inherit;
             font-weight: 700;
             transition: all 0.3s;
-            margin-top: auto;
         }
+        .export-btn:first-of-type { margin-top: auto; margin-bottom: 12px; }
+        .export-btn.pdf-btn {
+            background: rgba(56, 189, 248, 0.1);
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            color: var(--accent-primary);
+        }
+        .export-btn.pdf-btn:hover { background: rgba(56, 189, 248, 0.2); }
         .export-btn:hover { background: rgba(16, 185, 129, 0.2); transform: translateY(-2px); }
 
         /* Main Workspace */
@@ -271,7 +279,7 @@
     <aside class="sidebar">
         <div class="logo-container">
             <i data-lucide="target" class="logo-icon"></i>
-            <span class="logo-text">NexGen IoT</span>
+            <span class="logo-text">Edgelytics IoT</span>
         </div>
 
         <nav class="nav-items">
@@ -288,6 +296,9 @@
 
         <button class="export-btn" onclick="exportDataToCSV()">
             <i data-lucide="download"></i> Export Data CSV
+        </button>
+        <button class="export-btn pdf-btn" onclick="exportDataToPDF()">
+            <i data-lucide="file-text"></i> Export Data PDF
         </button>
     </aside>
 
@@ -475,6 +486,49 @@
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+        }
+
+        async function exportDataToPDF() {
+            if (rawDataLog.length === 0) return alert("No data available to export yet!");
+            
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // Branding & Header
+            doc.setFontSize(22);
+            doc.setTextColor(3, 7, 18); // Dark color
+            doc.text("Edgelytics IoT | Telemetry Report", 14, 20);
+            
+            doc.setFontSize(10);
+            doc.setTextColor(100);
+            doc.text(`Generated on: ${getFormattedTimestamp()}`, 14, 28);
+            doc.text("System: Enterprise Security / Live Monitoring", 14, 33);
+            
+            // Table
+            const tableData = rawDataLog.map(row => [
+                row.time, 
+                `${row.temp.toFixed(2)} °C`, 
+                `${row.hum.toFixed(2)} %`, 
+                row.tampered ? 'TAMPERED / INTRUSION' : 'STABLE / VALID'
+            ]);
+            
+            doc.autoTable({
+                startY: 40,
+                head: [['Local Timestamp', 'Core Temp', 'Humidity', 'Integrity Status']],
+                body: tableData,
+                theme: 'striped',
+                headStyles: { fillColor: [3, 7, 18] },
+                alternateRowStyles: { fillColor: [245, 247, 250] },
+                margin: { top: 40 },
+                didDrawPage: function(data) {
+                    // Footer
+                    doc.setFontSize(10);
+                    doc.setTextColor(150);
+                    doc.text("Confidential - Edgelytics Proprietary", 14, doc.internal.pageSize.height - 10);
+                }
+            });
+            
+            doc.save(`IoT_Telemetry_Report_${new Date().toISOString().slice(0,10)}.pdf`);
         }
 
         // Chart Setup
